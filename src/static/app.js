@@ -7,11 +7,14 @@ document.addEventListener("DOMContentLoaded", () => {
   // Function to fetch activities from API
   async function fetchActivities() {
     try {
-      const response = await fetch("/activities");
+      // always bypass caches so we get the latest data immediately
+      const response = await fetch("/activities", { cache: "no-store" });
       const activities = await response.json();
 
-      // Clear loading message
+      // Clear previous contents
       activitiesList.innerHTML = "";
+      // also wipe dropdown options (keep placeholder)
+      activitySelect.innerHTML = '<option value="">-- Select an activity --</option>';
 
       // Populate activities list
       Object.entries(activities).forEach(([name, details]) => {
@@ -26,6 +29,47 @@ document.addEventListener("DOMContentLoaded", () => {
           <p><strong>Schedule:</strong> ${details.schedule}</p>
           <p><strong>Availability:</strong> ${spotsLeft} spots left</p>
         `;
+
+        // If there are already participants signed up, render them as a list
+        if (details.participants && details.participants.length > 0) {
+          const participantsHeader = document.createElement("p");
+          participantsHeader.innerHTML = "<strong>Participants:</strong>";
+          activityCard.appendChild(participantsHeader);
+
+          const list = document.createElement("ul");
+          list.className = "participants";
+          details.participants.forEach((email) => {
+            const li = document.createElement("li");
+            li.textContent = email;
+
+            // add delete icon/button
+            const del = document.createElement("span");
+            del.className = "delete-participant";
+            del.title = "Remove participant";
+            del.textContent = "\u00D7"; // multiplication sign
+            del.addEventListener("click", async () => {
+              try {
+                const res = await fetch(
+                  `/activities/${encodeURIComponent(name)}/participants?email=${encodeURIComponent(email)}`,
+                  { method: "DELETE" }
+                );
+                if (res.ok) {
+                  // reload activities to reflect change
+                  fetchActivities();
+                } else {
+                  const err = await res.json();
+                  console.error("Failed to remove participant", err);
+                }
+              } catch (e) {
+                console.error("Error removing participant", e);
+              }
+            });
+
+            li.appendChild(del);
+            list.appendChild(li);
+          });
+          activityCard.appendChild(list);
+        }
 
         activitiesList.appendChild(activityCard);
 
@@ -62,6 +106,8 @@ document.addEventListener("DOMContentLoaded", () => {
         messageDiv.textContent = result.message;
         messageDiv.className = "success";
         signupForm.reset();
+        // refresh list so spots/participants update immediately
+        fetchActivities();
       } else {
         messageDiv.textContent = result.detail || "An error occurred";
         messageDiv.className = "error";
